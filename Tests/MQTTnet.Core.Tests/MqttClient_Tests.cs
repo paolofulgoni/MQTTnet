@@ -32,13 +32,11 @@ namespace MQTTnet.Tests
                 
                 var replyReceived = false;
 
-                client.UseApplicationMessageReceivedHandler(c =>
+                client.UseApplicationMessageReceivedHandler(async c =>
                 {
                     if (c.ApplicationMessage.Topic == "request")
                     {
-#pragma warning disable 4014
-                        Task.Run(() => client.PublishAsync("reply", null, MqttQualityOfServiceLevel.AtLeastOnce));
-#pragma warning restore 4014
+                        await client.PublishAsync("reply", null, MqttQualityOfServiceLevel.AtLeastOnce);
                     }
                     else
                     {
