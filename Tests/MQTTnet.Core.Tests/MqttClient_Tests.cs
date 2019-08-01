@@ -87,6 +87,63 @@ namespace MQTTnet.Tests
         }
 
         [TestMethod]
+        public async Task Make_Request_And_Wait_Response_In_Message_Handler()
+        {
+            //  client1       client2       client3
+            //     |             |             |
+            //     |  event      |             |
+            //     +------------>+             |
+            //     |             |  request    |
+            //     |             +------------>|
+            //     |             |  response   |
+            //     |             +<------------+
+            //     |             |             |
+
+            using (var testEnvironment = new TestEnvironment())
+            {
+                await testEnvironment.StartServerAsync();
+                var client1 = await testEnvironment.ConnectClientAsync();
+                var client2 = await testEnvironment.ConnectClientAsync();
+                var client3 = await testEnvironment.ConnectClientAsync();
+
+                await client2.SubscribeAsync("event");
+                await client3.SubscribeAsync("request");
+                await client2.SubscribeAsync("response");
+
+                var responseReceived = false;
+                var eventHandled = false;
+
+                client2.UseApplicationMessageReceivedHandler(async c =>
+                {
+                    if (c.ApplicationMessage.Topic == "event")
+                    {
+                        await client2.PublishAsync("request", null, MqttQualityOfServiceLevel.AtMostOnce);
+                        SpinWait.SpinUntil(() => responseReceived); // naive way to wait for a response
+                        eventHandled = true;
+                    }
+                    else if (c.ApplicationMessage.Topic == "response")
+                    {
+                        responseReceived = true;
+                    }
+                });
+
+                client3.UseApplicationMessageReceivedHandler(async c =>
+                {
+                    if (c.ApplicationMessage.Topic == "request")
+                    {
+                        await client3.PublishAsync("response", null, MqttQualityOfServiceLevel.AtMostOnce);
+                    }
+                });
+
+                await client1.PublishAsync("event", null, MqttQualityOfServiceLevel.AtMostOnce);
+
+                SpinWait.SpinUntil(() => eventHandled, TimeSpan.FromSeconds(10));
+
+                Assert.IsTrue(eventHandled);
+            }
+        }
+
+        [TestMethod]
         public async Task Reconnect()
         {
             using (var testEnvironment = new TestEnvironment())
